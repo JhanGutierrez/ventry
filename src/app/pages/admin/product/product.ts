@@ -8,7 +8,7 @@ import { VtError } from '@shared/components/ui/vt-error/vt-error';
 import { VtTextInput } from '@shared/components/ui/vt-text-input/vt-text-input';
 import { VtSpinner } from '@shared/components/ui/vt-spinner/vt-spinner';
 import { ProductClient } from './services/product-client';
-import { EMPTY, catchError, Subject, takeUntil } from 'rxjs';
+import { EMPTY, of, from, Subject, takeUntil, tap, catchError, finalize, Observable, map } from 'rxjs';
 import { ProductResponse } from '@core/models/product-response';
 import { IndexedDB } from '@core/services/indexed-db';
 import { DatePipe } from '@angular/common';
@@ -26,7 +26,7 @@ import { AppPermission } from '@core/directives/app-permission';
     VtError,
     VtTextInput,
     VtSpinner,
-    AppPermission
+    AppPermission,
   ],
   providers: [DatePipe],
   templateUrl: './product.html',
@@ -41,11 +41,10 @@ export class Product implements OnDestroy, OnInit {
 
   public products = signal<ProductResponse[]>([]);
   public isLoadingList = signal<boolean>(false);
-
   public isCreating = signal<boolean>(false);
+  public modalOpen = signal(false);
 
   public productForm: FormGroup = new FormGroup({});
-  public modalOpen = signal(false);
   private _destroy$ = new Subject<void>();
 
   public headers = signal<DataTableHeaders<ProductResponse>[]>([
@@ -55,7 +54,7 @@ export class Product implements OnDestroy, OnInit {
     {
       key: 'created_at',
       label: 'Fecha de Creación',
-      cellValue: (row) => this._datePipe.transform(row.created_at, 'short')
+      cellValue: (row) => this._datePipe.transform(row.created_at, 'short'),
     },
   ]);
 
@@ -65,107 +64,135 @@ export class Product implements OnDestroy, OnInit {
       name: [null, Validators.required],
       description: [null, Validators.required],
     });
-
     this.getProducts();
   }
 
-public getProducts() {
+  /**
+   * Loads products from API or cache
+   */
+  public getProducts(): void {
     this.isLoadingList.set(true);
-    this._productClient.loadProducts()
-      .pipe(takeUntil(this._destroy$))
-      .subscribe({
-        next: async (productsFromServer) => {
-          this.products.set(productsFromServer);
-          this.isLoadingList.set(false);
-          // Actualizamos la caché local con los datos frescos
-          await this._indexedDB.clearAndBulkPut('products', productsFromServer);
-          console.log('Product cache updated.');
-        },
-        error: async (err) => {
+    this._productClient
+      .loadProducts()
+      .pipe(
+        // On success, update cache
+        tap((productsFromServer) => this.updateCache(productsFromServer)),
+        // On error, try to load from cache
+        catchError((err) => {
           console.warn('Could not load products from network, trying cache.', err);
-          // Si la red falla, cargamos desde la caché
-          const cachedProducts = await this._indexedDB.getAll<ProductResponse>('products');
-          this.products.set(cachedProducts);
-          this.isLoadingList.set(false);
-        },
+          return this.loadFromCache();
+        }),
+        finalize(() => this.isLoadingList.set(false)),
+        takeUntil(this._destroy$)
+      )
+      .subscribe({
+        next: (products) => this.products.set(products),
+        error: (err) => console.error('Failed to load products from network or cache:', err),
       });
   }
 
-  public createProduct() {
+  /**
+   * Creates a product, tries offline if online fails
+   * @returns void
+   */
+  public createProduct(): void {
     if (this.productForm.invalid) {
       this.productForm.markAllAsTouched();
       return;
     }
-    this.isCreating.set(true);
-    this.createProductOnline();
-  }
 
-    private createProductOnline() {
-    this._productClient.createProduct(this.productForm.value)
+    this.isCreating.set(true);
+
+    this._productClient
+      .createProduct(this.productForm.value)
       .pipe(
-        takeUntil(this._destroy$),
+        // If online creation fails, try offline
         catchError((error) => {
-          console.error('Error during online save process:', error);
-          this.createProductOffline();
-          return EMPTY;
-        })
+          console.error('Online creation failed, attempting offline save.', error);
+          alert('No connection. Product will be saved and created when reconnected.');
+          return this.createProductOffline();
+        }),
+        // Always stop spinner at the end
+        finalize(() => this.isCreating.set(false)),
+        takeUntil(this._destroy$)
       )
       .subscribe({
-        next: (response) => {
-          this.products.update((current) => [...current, response]);
+        next: (newProduct) => {
+          // Both online and offline emit the new product
+          this.products.update((current) => [...current, newProduct]);
           this.finishCreation();
         },
         error: (err) => {
-          console.error('Error creating product online:', err);
-          this.isCreating.set(false);
+          // This error is only emitted if OFFLINE creation fails
+          console.error('Failed to save product offline:', err);
+          alert('Could not save product locally.');
         },
       });
   }
 
+  /**
+   * Updates local cache with new data
+   * @param data New product data to cache
+   */
+  private updateCache(data: ProductResponse[]): void {
+    from(this._indexedDB.clearAndBulkPut('products', data))
+      .pipe(catchError(() => of(console.error('Failed to update product cache.'))))
+      .subscribe(() => console.log('Product cache updated.'));
+  }
 
-    private async createProductOffline() {
+  /**
+   * Loads products from local cache
+   * @returns An observable of cached product data
+   */
+  private loadFromCache(): Observable<ProductResponse[]> {
+    return from(this._indexedDB.getAll<ProductResponse>('products')).pipe(
+      catchError((cacheError) => {
+        console.error('Failed to load products from cache:', cacheError);
+        // Return empty array to keep flow working
+        return of([]);
+      })
+    );
+  }
+
+  /**
+   * Saves product offline if online fails
+   * @returns Observable emitting the optimistically created product
+   */
+  private createProductOffline(): Observable<ProductResponse> {
     const productData = this.productForm.value;
     const newProductId = uuidv4();
 
-    // 1. Creamos el objeto de acción pendiente con la nueva estructura
-    const pendingAction = {
-      id: uuidv4(), // ID único para la acción en sí
-      entity: 'product',
-      action: 'CREATE',
-      payload: {
-        product: {
-          ...productData,
-          id: newProductId, // El ID del objeto que se va a crear
-        }
-      }
-    };
-
-    const optimisticProduct = {
+    const optimisticProduct: ProductResponse = {
       ...productData,
       id: newProductId,
       created_at: new Date().toISOString(),
     };
 
-    try {
-      await this._indexedDB.add('pending_actions', pendingAction);
-      await this._indexedDB.add('products', optimisticProduct);
+    const pendingAction = {
+      id: uuidv4(),
+      entity: 'product',
+      action: 'CREATE',
+      payload: { product: optimisticProduct },
+    };
 
-      this.products.update((current) => [...current, optimisticProduct]);
-
-      alert('Sin conexión. El producto se guardó y se creará al reconectar.');
-      this.finishCreation();
-    } catch (error) {
-      console.error('Error saving product offline:', error);
-      alert('No se pudo guardar el producto localmente.');
-      this.isCreating.set(false);
-    }
+    // Convert IndexedDB promises to observable
+    const offlineSave$ = from(
+      Promise.all([
+        this._indexedDB.add('pending_actions', pendingAction),
+        this._indexedDB.add('products', optimisticProduct),
+      ])
+    );
+    return offlineSave$.pipe(
+      // If all goes well, emit the optimistic product
+      map(() => optimisticProduct)
+    );
   }
 
-    private finishCreation(): void {
-      this.isCreating.set(false);
-      this.modalOpen.set(false);
-      this.productForm.reset();
-    }
+  // Resets modal and form after creation
+  private finishCreation(): void {
+    this.modalOpen.set(false);
+    this.productForm.reset();
+  }
 
   ngOnDestroy(): void {
     this._destroy$.next();

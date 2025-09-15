@@ -38,7 +38,14 @@
 .sidebar-list {
   display: flex;
   flex-direction: column;
+  height: 100%;
   gap: .5rem;
+}
+
+.sidebar-logout-container {
+  margin-top: auto;
+  display: flex;
+  justify-content: center;
 }
 
 .sidebar-item-container {
@@ -53,6 +60,28 @@
   font-size: 1rem;
   color: var(--color-muted);
   padding: .8rem 1rem;
+}
+
+.sidebar-logout {
+  background: none;
+  border: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: 1rem;
+  padding: .8rem 1rem;
+  border-radius: 20px;
+  transition: background 0.2s, color 0.2s;
+  margin-bottom: 3rem;
+}
+
+.sidebar-logout:hover {
+  background-color: var(--color-secondary);
+  color: var(--color-primary);
 }
 
 .sidebar-item:hover,

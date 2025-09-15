@@ -1,4 +1,16 @@
 <div class="login-container">
+  <header class="login-header">
+    <div class="logo-circle">
+      <!-- Puedes reemplazar este SVG por tu logo real -->
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="24" cy="24" r="24" fill="#4F46E5"/>
+        <text x="50%" y="55%" text-anchor="middle" fill="#fff" font-size="1.5rem" font-family="Inter, Arial, sans-serif" dy=".3em">V</text>
+      </svg>
+    </div>
+    <h1>Iniciar sesión</h1>
+    <p>Inicia sesión para gestionar tu inventario</p>
+  </header>
+
   <form class="login-form" [formGroup]="loginForm" (submit)="onLogin()">
     <vt-text-input inputLabel="Nombre usuario" formControlName="username">
       @if(loginForm.get("username")?.hasError("required") && loginForm.get("username")?.touched ){
@@ -6,7 +18,7 @@
       }
     </vt-text-input>
 
-    <vt-text-input inputType="password" inputType="password" inputLabel="contraseña" formControlName="password">
+    <vt-text-input inputType="password" inputLabel="contraseña" formControlName="password">
       @if(loginForm.get("password")?.hasError("required") && loginForm.get("password")?.touched){
         <vt-error>Este campo es <strong>Obligatorio</strong></vt-error>
       }

@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 
-import { WarehouseClient } from './product-client';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { Apollo } from 'apollo-angular';
+import { WarehouseClient } from '@pages/admin/warehouse/services/warehouse-client';
 
 describe('WarehouseClient', () => {
   let service: WarehouseClient;
