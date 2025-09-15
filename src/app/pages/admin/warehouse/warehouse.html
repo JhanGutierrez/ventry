@@ -1,0 +1,41 @@
+<div class="warehouse">
+  <div class="warehouse-header">
+    <h1 class="title">Almacen</h1>
+    <p class="description">Lorem ipsum dolor sit, amet consectetur adipisicing elit. Fugiat repellendus eius autem.</p>
+  </div>
+
+  <div class="content">
+    <div class="content-header" *appAppPermission="['admin']">
+      <vt-button (onClick)="modalOpen.set(true)"><i-lucide [name]="addIcon()" size="18" class="lucide-icon" /> Nuevo Almacen</vt-button>
+    </div>
+
+    @if(isLoadingList()){
+      <vt-spinner class="list-spinner" [loaderText]="'Cargando datos...'"/>
+    }@else {
+      <data-table [data]="warehouses()" [headers]="headers()" />
+    }
+  </div>
+</div>
+
+@if(modalOpen()){
+  <vt-modal title="Nuevo Almacén" [(open)]="modalOpen">
+    <form class="modal-form" [formGroup]="warehouseForm" (submit)="createWarehouse()">
+      <vt-text-input inputLabel="Nombre Almacén" formControlName="name">
+        @if(warehouseForm.get("name")?.hasError("required") && warehouseForm.get("name")?.touched){
+          <vt-error vt-error>Este campo es <strong>Obligatorio</strong></vt-error>
+        }
+      </vt-text-input>
+
+      <vt-text-input inputLabel="Ubicación" formControlName="location">
+        @if(warehouseForm.get("location")?.hasError("required") && warehouseForm.get("location")?.touched){
+          <vt-error>Este campo es <strong>Obligatorio</strong></vt-error>
+        }
+      </vt-text-input>
+
+      <vt-button [disabled]="isCreating()">
+        @if(isCreating()){ <vt-spinner class="insert-spinner" /> }
+        Crear
+      </vt-button>
+    </form>
+  </vt-modal>
+}

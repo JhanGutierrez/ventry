@@ -1,0 +1,56 @@
+<div class="movements">
+  <div class="movements-header">
+    <h1 class="title">Movimientos</h1>
+    <p class="description">Lorem ipsum dolor sit, amet consectetur adipisicing elit. Fugiat repellendus eius autem.</p>
+  </div>
+
+  <div class="content">
+    <div class="content-header">
+      <vt-button (onClick)="modalOpen.set(true)"><i-lucide [name]="addIcon()" size="18" class="lucide-icon" /> Nuevo movimiento</vt-button>
+    </div>
+
+    @if(isLoadingList()){
+      <vt-spinner class="list-spinner" [loaderText]="'Cargando datos...'"/>
+    }@else {
+      <data-table [data]="movements()" [headers]="headers()" />
+    }
+  </div>
+</div>
+
+@if(modalOpen()){
+  <vt-modal title="Nuevo Movimiento" [(open)]="modalOpen">
+    <form class="modal-form" [formGroup]="inventoryForm" (submit)="onSubmit()">
+      <vt-select label="Almacén" formControlName="warehouse_id" [options]="warehouses()" />
+
+      <vt-select label="Producto" formControlName="product_id" [options]="products()">
+        @if(inventoryForm.get("product_id")?.hasError("required") && inventoryForm.get("product_id")?.touched){
+          <vt-error vt-error>Este campo es <strong>Obligatorio</strong></vt-error>
+        }
+      </vt-select>
+
+      <vt-text-input inputType="number" inputLabel="Cantidad" formControlName="quantity">
+        @if(inventoryForm.get("quantity")?.hasError("required") && inventoryForm.get("quantity")?.touched){
+          <vt-error vt-error>Este campo es <strong>Obligatorio</strong></vt-error>
+        }
+      </vt-text-input>
+
+      <vt-select label="Tipo" formControlName="type" [options]="types()" >
+        @if(inventoryForm.get("type")?.hasError("required") && inventoryForm.get("type")?.touched){
+          <vt-error vt-error>Este campo es <strong>Obligatorio</strong></vt-error>
+        }
+      </vt-select>
+
+      <!-- TODO: TEXTAREA -->
+      <vt-text-input inputLabel="Razón" formControlName="reason">
+        @if(inventoryForm.get("reason")?.hasError("required") && inventoryForm.get("reason")?.touched){
+          <vt-error vt-error>Este campo es <strong>Obligatorio</strong></vt-error>
+        }
+      </vt-text-input>
+
+      <vt-button [disabled]="isCreating()">
+        @if(isCreating()){ <vt-spinner class="insert-spinner" /> }
+        Crear
+      </vt-button>
+    </form>
+  </vt-modal>
+}

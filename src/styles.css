@@ -1,0 +1,49 @@
+@import './fonts.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+*{
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+:root {
+  --color-background: hsl(0 0% 95%);
+  --color-foreground: hsl(0 0% 7%);
+  --color-card: hsl(0 0% 99%);
+  --color-primary: hsl(0 0% 7%);
+  --color-secondary: hsl(0 0% 99%);
+  --color-accent: hsl(0 0% 95%);
+  --color-border: hsl(0 0% 89%);
+  --color-muted: hsl(0 0% 45%);
+  --color-destructive: hsl(358 81% 64%);
+
+  /*   --color-popover: hsl(0 0% 100%);
+  --color-secondary-foreground: hsl(51 9% 29%);
+  --color-muted-foreground: hsl(45 3% 51%);
+  --color-accent-foreground: hsl(51 21% 13%);
+  --color-input: hsl(49 10% 67%);
+  --color-ring: hsl(210 78% 49%);
+  --color-chart-1: hsl(18 58% 44%);
+  --color-chart-2: hsl(251 86% 75%);
+  --color-chart-3: hsl(45 30% 82%);
+  --color-chart-4: hsl(257 48% 88%);
+  --color-chart-5: hsl(18 58% 44%);
+  --color-sidebar: hsl(47 36% 95%);
+  --color-sidebar-foreground: hsl(60 5% 23%);
+  --color-sidebar-primary: hsl(15 57% 53%);
+  --color-sidebar-primary-foreground: hsl(0 0% 99%);
+  --color-sidebar-accent: hsl(42 17% 89%);
+  --color-sidebar-accent-foreground: hsl(0 0% 21%);
+  --color-sidebar-border: hsl(0 0% 92%);
+  --color-sidebar-ring: hsl(0 0% 71%); */
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+}

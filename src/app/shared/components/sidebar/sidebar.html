@@ -1,0 +1,15 @@
+<div class="sidebar">
+  <div class="sidebar-header">
+    <span class="logo">Ventry</span>
+    <span class="logo-mobile">V</span>
+  </div>
+  <ul class="sidebar-list">
+    @for (item of options(); track $index) {
+      <li class="sidebar-item-container">
+        <a [routerLink]="item.route" [routerLinkActiveOptions]="{exact: true}" routerLinkActive="is-active" class="sidebar-item">
+          <i-lucide [name]="item.icon" [size]="20" class="sidebar-item-icon" /> <span>{{ item.label }}</span>
+        </a>
+      </li>
+    }
+  </ul>
+</div>

@@ -1,0 +1,14 @@
+<div class="inventory">
+  <div class="inventory-header">
+    <h1 class="title">Inventario</h1>
+    <p class="description">Lorem ipsum dolor sit, amet consectetur adipisicing elit. Fugiat repellendus eius autem.</p>
+  </div>
+
+  <div class="content">
+    @if(isLoadingList()){
+      <vt-spinner class="list-spinner" [loaderText]="'Cargando datos...'"/>
+    }@else {
+      <data-table [data]="inventories()" [headers]="headers()" />
+    }
+  </div>
+</div>

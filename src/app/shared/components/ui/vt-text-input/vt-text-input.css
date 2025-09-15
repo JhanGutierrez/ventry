@@ -1,0 +1,57 @@
+:host {
+  --vt-input-label-font-size: 1rem;
+  --vt-input-container-gap: .25rem;
+  --vt-input-label-font-weight: 500;
+  --vt-input-label-color: var(--color-primary);
+
+  --vt-input-padding: 0.75rem 1rem;
+  --vt-input-border-radius: 999px;
+  --vt-input-border-color: var(--color-border);
+  --vt-input-border-focus-color: var(--color-primary);
+  --vt-input-bg-color: transparent;
+  --vt-input-text-color: var(--colo-secondary);
+  --vt-input-disabled-bg: #f1f5f9;
+  --vt-input-disabled-border-color: #e2e8f0;
+  --vt-input-font-size: 1rem;
+
+  --vt-input-content-gap: .25rem;
+}
+
+.vt-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vt-input-container-gap);
+}
+
+.vt-input-label {
+  font-size: var(--vt-input-label-font-size);
+  font-weight: var(--vt-input-label-font-weight);
+  color: var(--vt-input-label-color);
+}
+
+.vt-input {
+  padding: var(--vt-input-padding);
+  font-size: var(--vt-input-font-size);
+  color: var(--vt-input-text-color);
+  background-color: var(--vt-input-bg-color);
+  border: 1px solid var(--vt-input-border-color);
+  border-radius: var(--vt-input-border-radius);
+  outline: none;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.vt-input:focus {
+  border-color: var(--vt-input-border-focus-color);
+}
+
+.vt-input:disabled {
+  background-color: var(--vt-input-disabled-bg);
+  border-color: var(--vt-input-disabled-border-color);
+  cursor: not-allowed;
+}
+
+.vt-input-content{
+  display: flex;
+  flex-direction: column;
+  gap: var(--vt-input-content-gap);
+}

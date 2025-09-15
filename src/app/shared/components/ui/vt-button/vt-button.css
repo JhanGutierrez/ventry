@@ -1,0 +1,35 @@
+:host {
+  --vt-btn-border-radius: 999px;
+  --vt-btn-gap: .5rem;
+  --vt-btn-bg: var(--color-primary);
+  --vt-btn-color: var(--color-secondary);
+  --vt-btn-padding: .75rem 1rem;
+  --vt-btn-font-size: 1rem;
+  --vt-btn-box-shadow: inset 2px 2px 5px rgba(255, 255, 255, 0.2), inset -3px -3px 7px rgba(0, 0, 0, 0.5);
+  --vt-btn-width: auto;
+}
+
+.vt-button {
+  font-family: 'Inter', sans-serif;
+  width: var(--vt-btn-width);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--vt-btn-gap);
+  border-radius: var(--vt-btn-border-radius);
+  background-color: var(--vt-btn-bg);
+  color: var(--vt-btn-color);
+  padding: var(--vt-btn-padding);
+  cursor: pointer;
+  font-size: var(--vt-btn-font-size);
+  box-shadow: var(--vt-btn-box-shadow);
+  outline: none;
+  border: none;
+}
+
+.vt-button:disabled {
+  background-color: var(--color-muted);
+  color: var(--color-secondary);
+  cursor: not-allowed;
+  box-shadow: none;
+}

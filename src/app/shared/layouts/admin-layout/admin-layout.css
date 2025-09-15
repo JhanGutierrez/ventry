@@ -1,0 +1,30 @@
+.admin-layout{
+  width: 100;
+  max-width: 1920px;
+  background-color: var(--color-background);
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.admin-layout-content{
+  margin-left: 52px ;
+  padding-left: .5rem;
+}
+
+/* (small tablet) */
+@media (min-width: 40rem) {}
+
+/* (big tablet) */
+@media (min-width: 48rem) {
+  .admin-layout-content{
+    margin-left: 240px ;
+    padding-left: 1rem;
+  }
+}
+
+/* (laptop) */
+@media (min-width: 64rem) {
+}
+
+/*  (desktop) */
+@media (min-width: 80rem) {}
