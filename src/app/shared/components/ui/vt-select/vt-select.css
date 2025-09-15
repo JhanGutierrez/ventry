@@ -1,0 +1,57 @@
+:host {
+  --vt-select-label-font-size: 1rem;
+  --vt-select-container-gap: .25rem;
+  --vt-select-label-font-weight: 500;
+  --vt-select-label-color: var(--color-primary);
+
+  --vt-select-padding: 0.75rem 1rem;
+  --vt-select-border-radius: 999px;
+  --vt-select-border-color: var(--color-border);
+  --vt-select-border-focus-color: var(--color-primary);
+  --vt-select-bg-color: transparent;
+  --vt-select-text-color: var(--colo-secondary);
+  --vt-select-disabled-bg: #f1f5f9;
+  --vt-select-disabled-border-color: #e2e8f0;
+  --vt-select-font-size: 1rem;
+
+  --vt-select-content-gap: .25rem;
+}
+
+.vt-select-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vt-select-container-gap);
+}
+
+.vt-select-label {
+  font-size: var(--vt-select-label-font-size);
+  font-weight: var(--vt-select-label-font-weight);
+  color: var(--vt-select-label-color);
+}
+
+.vt-select {
+  padding: var(--vt-select-padding);
+  font-size: var(--vt-select-font-size);
+  color: var(--vt-select-text-color);
+  background-color: var(--vt-select-bg-color);
+  border: 1px solid var(--vt-select-border-color);
+  border-radius: var(--vt-select-border-radius);
+  outline: none;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.vt-select:focus {
+  border-color: var(--vt-select-border-focus-color);
+}
+
+.vt-select:disabled {
+  background-color: var(--vt-select-disabled-bg);
+  border-color: var(--vt-select-disabled-border-color);
+  cursor: not-allowed;
+}
+
+.vt-select-content{
+  display: flex;
+  flex-direction: column;
+  gap: var(--vt-select-content-gap);
+}

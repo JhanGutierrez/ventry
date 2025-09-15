@@ -1,0 +1,20 @@
+<div class="vt-modal-container">
+  <div class="vt-modal">
+    <div class="vt-modal-header">
+      <h1 class="title">{{ title() }}</h1>
+      <button class="close-button" (click)="open.set(false)">
+        <i-lucide [name]="closeIcon()" class="close-icon" size="20" />
+      </button>
+    </div>
+
+    <div class="vt-modal-content">
+      <div class="vt-modal-content-scroll">
+        <ng-content />
+      </div>
+
+      @if(actionsTemplate()){
+        <ng-container *ngTemplateOutlet="actionsTemplate()" />
+      }
+    </div>
+  </div>
+</div>

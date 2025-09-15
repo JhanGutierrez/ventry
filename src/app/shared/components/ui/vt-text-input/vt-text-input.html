@@ -1,0 +1,17 @@
+<div class="vt-input-container">
+  <label class="vt-input-label" [attr.for]="inputId()">
+    {{ inputLabel() }}
+  </label>
+
+  <div class="vt-input-content">
+    <input class="vt-input"
+      [attr.id]="inputId()"
+      [type]="inputType()"
+      [value]="value()"
+      [disabled]="isDisabled()"
+      (input)="onValueChange($event)"
+      (blur)="onBlur()"
+    >
+    <ng-content />
+  </div>
+</div>

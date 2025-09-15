@@ -1,0 +1,21 @@
+<div class="vt-select-container">
+  <label class="vt-select-label" [attr.for]="inputId()">
+    {{ inputLabel() }}
+  </label>
+
+  <div class="vt-select-content">
+    <select
+      class="vt-select"
+      [attr.id]="inputId()"
+      [disabled]="isDisabled()"
+      [value]="value() ?? ''"
+      (change)="onValueChange($event)"
+      (blur)="onBlur()"
+    >
+      @for (item of options(); track $index) {
+        <option [value]="item.value" [disabled]="item.disabled">{{ item.label }}</option>
+      }
+    </select>
+    <ng-content />
+  </div>
+</div>

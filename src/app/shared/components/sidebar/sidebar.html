@@ -1,0 +1,17 @@
+<div class="sidebar">
+  <div class="sidebar-header">
+    <span class="logo">Ventry</span>
+    <button class="sidebar-header-toggle">
+      <i-lucide [name]="sidebarIcon()" [size]="20" />
+    </button>
+  </div>
+  <ul class="sidebar-list">
+    @for (item of options(); track $index) {
+      <li class="sidebar-item-container">
+        <a [routerLink]="item.route" [routerLinkActiveOptions]="{exact: true}" routerLinkActive="is-active" class="sidebar-item">
+          <i-lucide [name]="item.icon" [size]="20" class="sidebar-item-icon" /> {{ item.label }}
+        </a>
+      </li>
+    }
+  </ul>
+</div>

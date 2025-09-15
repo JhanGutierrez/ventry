@@ -1,0 +1,9 @@
+:host{
+  --vt-error-color: var(--color-destructive);
+  --vt-error-font-size: .8rem;
+}
+
+.vt-error{
+  color: var(--vt-error-color);
+  font-size: var(--vt-error-font-size);
+}

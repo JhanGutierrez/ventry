@@ -1,0 +1,16 @@
+<div class="login-container">
+  <form class="login-form" [formGroup]="loginForm" (submit)="onLogin()">
+    <vt-text-input inputLabel="Nombre usuario" formControlName="username">
+      @if(loginForm.get("username")?.hasError("required") && loginForm.get("username")?.touched ){
+        <vt-error>Este campo es <strong>Obligatorio</strong></vt-error>
+      }
+    </vt-text-input>
+
+    <vt-text-input inputType="password" inputType="password" inputLabel="contraseña" formControlName="password">
+      @if(loginForm.get("password")?.hasError("required") && loginForm.get("password")?.touched){
+        <vt-error>Este campo es <strong>Obligatorio</strong></vt-error>
+      }
+    </vt-text-input>
+    <vt-button>Ingresar</vt-button>
+  </form>
+</div>

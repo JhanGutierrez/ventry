@@ -1,0 +1,38 @@
+<div class="table-container">
+  <table class="table">
+    <thead class="table-header">
+      <tr>
+        @for (header of headers(); track $index) {
+          <th class="table-th">{{ header.label }}</th>
+        }
+      </tr>
+    </thead>
+
+    <tbody class="table-body">
+      @for (row of data(); track $index) {
+        <tr class="table-tr">
+          @for (header of headers(); track $index) {
+            <td class="table-td">
+               @if(header.cellValue) {
+                {{ header.cellValue(row) }}
+              } @else {
+                {{ row | nestedCellValue: header.key }}
+              }
+            </td>
+          }
+        </tr>
+      }
+    </tbody>
+    @if(data().length === 0){
+    <tfoot class="table-footer">
+      <tr>
+        <td [attr.colspan]="headers().length" class="table-footer-cell">
+          No hay datos disponibles
+        </td>
+      </tr>
+    </tfoot>
+    }
+  </table>
+</div>
+
+<!-- TODO: RESPONSIVE -->
