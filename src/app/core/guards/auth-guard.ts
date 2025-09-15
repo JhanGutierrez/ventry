@@ -5,8 +5,6 @@ import { SessionManager } from '@core/services/session-manager';
 export const authGuard: CanActivateFn = (route, state) => {
   const sessionManager = inject(SessionManager);
 
-  console.log('sessionManager', sessionManager.isTokenValid());
-
   if (sessionManager.isTokenValid()) return true;
 
   sessionManager.logout();

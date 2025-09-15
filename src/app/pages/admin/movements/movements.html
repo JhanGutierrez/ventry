@@ -20,9 +20,13 @@
 @if(modalOpen()){
   <vt-modal title="Nuevo Movimiento" [(open)]="modalOpen">
     <form class="modal-form" [formGroup]="inventoryForm" (submit)="createMovement()">
-      <vt-select label="Almacén" formControlName="warehouse_id" [options]="warehouses()" />
+      <vt-select inputLabel="Almacén" formControlName="warehouse_id" [options]="warehouses()">
+        @if(inventoryForm.get("warehouse_id")?.hasError("required") && inventoryForm.get("warehouse_id")?.touched){
+          <vt-error vt-error>Este campo es <strong>Obligatorio</strong></vt-error>
+        }
+      </vt-select>
 
-      <vt-select label="Producto" formControlName="product_id" [options]="products()">
+      <vt-select inputLabel="Producto" formControlName="product_id" [options]="products()">
         @if(inventoryForm.get("product_id")?.hasError("required") && inventoryForm.get("product_id")?.touched){
           <vt-error vt-error>Este campo es <strong>Obligatorio</strong></vt-error>
         }
@@ -34,7 +38,7 @@
         }
       </vt-text-input>
 
-      <vt-select label="Tipo" formControlName="type" [options]="types()" >
+      <vt-select inputLabel="Tipo" formControlName="type" [options]="types()" >
         @if(inventoryForm.get("type")?.hasError("required") && inventoryForm.get("type")?.touched){
           <vt-error vt-error>Este campo es <strong>Obligatorio</strong></vt-error>
         }
