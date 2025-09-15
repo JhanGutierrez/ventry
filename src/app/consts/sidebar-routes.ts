@@ -8,11 +8,6 @@ export interface SidebarOptions {
 
 export const SIDEBAR_ROUTES: SidebarOptions[] = [
   {
-    label: 'Dashboard',
-    route: '/',
-    icon: House,
-  },
-  {
     label: 'Almacenes',
     route: '/warehouses',
     icon: Warehouse,
