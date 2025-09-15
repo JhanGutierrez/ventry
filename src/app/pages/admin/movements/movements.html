@@ -19,7 +19,7 @@
 
 @if(modalOpen()){
   <vt-modal title="Nuevo Movimiento" [(open)]="modalOpen">
-    <form class="modal-form" [formGroup]="inventoryForm" (submit)="onSubmit()">
+    <form class="modal-form" [formGroup]="inventoryForm" (submit)="createMovement()">
       <vt-select label="Almacén" formControlName="warehouse_id" [options]="warehouses()" />
 
       <vt-select label="Producto" formControlName="product_id" [options]="products()">

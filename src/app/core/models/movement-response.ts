@@ -8,5 +8,5 @@ export interface MovementResponse {
   type: 'INBOUND' | 'OUTBOUND';
   user_id: string;
   created_at: string;
-  user?: UserResponse | null;
+  user?: Partial<UserResponse> | null;
 }

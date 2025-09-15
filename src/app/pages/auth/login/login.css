@@ -8,6 +8,40 @@
   border-radius: 2rem;
   max-width: 700px;
   width: 100%;
+  box-shadow: 0 4px 24px 0 rgba(80, 80, 120, 0.08);
+}
+
+.login-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.logo-circle {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
+  border-radius: 50%;
+  margin-bottom: 0.5rem;
+  box-shadow: 0 2px 8px 0 rgba(80, 80, 120, 0.10);
+}
+
+.login-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-primary, #3730a3);
+  margin: 0;
+}
+
+.login-header p {
+  color: var(--color-text-secondary, #6b7280);
+  margin: 0;
+  font-size: 1rem;
 }
 
 .login-container form{

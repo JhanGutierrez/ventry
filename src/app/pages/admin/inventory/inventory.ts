@@ -4,7 +4,7 @@ import { LucideIconData, Plus, LucideAngularModule } from 'lucide-angular';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { VtSpinner } from '@shared/components/ui/vt-spinner/vt-spinner';
 import { InventoryClient } from './services/inventory-client';
-import { Subject, takeUntil } from 'rxjs';
+import { Subject, takeUntil, tap, catchError, of, finalize, from } from 'rxjs';
 import { InventoryResponse } from '@core/models/inventory-response';
 import { DatePipe } from '@angular/common';
 import { IndexedDB } from '@core/services/indexed-db';
@@ -16,17 +16,16 @@ import { IndexedDB } from '@core/services/indexed-db';
   templateUrl: './inventory.html',
   styleUrl: './inventory.css',
 })
+
 export class Inventory implements OnDestroy, OnInit {
   public readonly addIcon = signal<LucideIconData>(Plus);
   private _inventoryClient = inject(InventoryClient);
   private _datePipe = inject(DatePipe);
   private _indexedDB = inject(IndexedDB);
-
   private _fb = inject(FormBuilder);
 
   public inventories = signal<InventoryResponse[]>([]);
   public isLoadingList = signal<boolean>(false);
-
   public inventoryForm: FormGroup = new FormGroup({});
   private _destroy$ = new Subject<void>();
 
@@ -50,41 +49,52 @@ export class Inventory implements OnDestroy, OnInit {
     this.getInventories();
   }
 
-  private getInventories() {
+  /**
+   * Loads inventories from API or cache
+   */
+  private getInventories(): void {
     this.isLoadingList.set(true);
-
     this._inventoryClient
       .loadInventories()
-      .pipe(takeUntil(this._destroy$))
-      .subscribe({
-        next: async (inventoriesFromServer) => {
-          this.inventories.set(inventoriesFromServer);
-          this.isLoadingList.set(false);
-
-          // Guardamos los datos frescos en nuestra caché local
-          try {
-            await this._indexedDB.clearAndBulkPut('inventories', inventoriesFromServer);
-            console.log('Inventory cache updated.');
-          } catch (error) {
-            console.error('Failed to update inventory cache:', error);
-          }
-        },
-        error: async (err) => {
+      .pipe(
+        // On success, update cache
+        tap((inventoriesFromServer) => this.updateCache(inventoriesFromServer)),
+        // On error, try to load from cache
+        catchError((err) => {
           console.warn('Could not load inventories from network, trying cache.', err);
-
-          // Si la red falla, intentamos cargar desde la caché de IndexedDB
-          try {
-            const cachedInventories = await this._indexedDB.getAll<InventoryResponse>(
-              'inventories'
-            );
-            this.inventories.set(cachedInventories);
-          } catch (cacheError) {
-            console.error('Failed to load inventories from cache:', cacheError);
-          }
-
-          this.isLoadingList.set(false);
-        },
+          return this.loadFromCache();
+        }),
+        finalize(() => this.isLoadingList.set(false)),
+        takeUntil(this._destroy$)
+      )
+      .subscribe({
+        next: (inventories) => this.inventories.set(inventories),
+        error: (err) => console.error('An unexpected error occurred:', err),
       });
+  }
+
+  /**
+   * Updates local cache with new data
+   * @param data New inventory data to cache
+   */
+  private updateCache(data: InventoryResponse[]): void {
+    from(this._indexedDB.clearAndBulkPut('inventories', data))
+      .pipe(catchError(() => of(console.error('Failed to update inventory cache.'))))
+      .subscribe(() => console.log('Inventory cache updated.'));
+  }
+
+  /**
+   * Loads inventories from local cache
+   * @returns An observable of cached inventory data
+   */
+  private loadFromCache() {
+    return from(this._indexedDB.getAll<InventoryResponse>('inventories')).pipe(
+      catchError((cacheError) => {
+        console.error('Failed to load inventories from cache:', cacheError);
+        // Return empty array to keep flow working
+        return of([]);
+      })
+    );
   }
 
   ngOnDestroy(): void {

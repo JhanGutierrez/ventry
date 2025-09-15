@@ -8,7 +8,20 @@ import { VtError } from '@shared/components/ui/vt-error/vt-error';
 import { VtTextInput } from '@shared/components/ui/vt-text-input/vt-text-input';
 import { VtSpinner } from '@shared/components/ui/vt-spinner/vt-spinner';
 import { VtSelect, VtSelectOption } from '@shared/components/ui/vt-select/vt-select';
-import { catchError, EMPTY, forkJoin, Observable, Subject, switchMap, takeUntil } from 'rxjs';
+import {
+  catchError,
+  EMPTY,
+  finalize,
+  forkJoin,
+  from,
+  map,
+  Observable,
+  of,
+  Subject,
+  switchMap,
+  takeUntil,
+  tap,
+} from 'rxjs';
 import { ProductClient } from '../product/services/product-client';
 import { WarehouseClient } from '../warehouse/services/warehouse-client';
 import { DatePipe } from '@angular/common';
@@ -17,6 +30,10 @@ import { MovementResponse } from '@core/models/movement-response';
 import { InventoryClient } from '../inventory/services/inventory-client';
 import { IndexedDB } from '@core/services/indexed-db';
 import { v4 as uuidv4 } from 'uuid';
+import { ProductResponse } from '@core/models/product-response';
+import { WarehouseResponse } from '@core/models/warehouse-response';
+import { InventoryResponse } from '@core/models/inventory-response';
+import { SessionManager } from '@core/services/session-manager';
 
 @Component({
   selector: 'app-movements',
@@ -36,7 +53,6 @@ import { v4 as uuidv4 } from 'uuid';
   styleUrl: './movements.css',
 })
 export class Movements implements OnDestroy, OnInit {
-  // private _onlineStatus = inject(OnlineStatus);
   private _indexedDB = inject(IndexedDB);
   private _movementsClient = inject(MovementsClient);
   private _productClient = inject(ProductClient);
@@ -44,9 +60,10 @@ export class Movements implements OnDestroy, OnInit {
   private _inventoryClient = inject(InventoryClient);
   private _datePipe = inject(DatePipe);
   private _fb = inject(FormBuilder);
+  private _sessionManager = inject(SessionManager);
 
   public readonly addIcon = signal<LucideIconData>(Plus);
-  public movements = signal<MovementResponse[]>([]);
+  public movements = signal<Partial<MovementResponse>[]>([]);
   public products = signal<VtSelectOption[]>([]);
   public warehouses = signal<VtSelectOption[]>([]);
   public types = signal<VtSelectOption[]>([
@@ -57,7 +74,6 @@ export class Movements implements OnDestroy, OnInit {
 
   public isLoadingList = signal<boolean>(false);
   public isCreating = signal<boolean>(false);
-
   public inventoryForm: FormGroup = new FormGroup({});
   public modalOpen = signal(false);
   private _destroy$ = new Subject<void>();
@@ -83,90 +99,52 @@ export class Movements implements OnDestroy, OnInit {
   ]);
 
   ngOnInit(): void {
+    this.initializeForm();
+    this.loadInitialData();
+  }
+
+  private initializeForm() {
     this.inventoryForm = this._fb.group({
       quantity: [null, Validators.required],
       warehouse_id: [null, Validators.required],
       product_id: [null, Validators.required],
-
       type: [null, Validators.required],
       reason: [null, Validators.required],
     });
-    this.getInventories();
   }
 
-  private getInventories() {
+  private loadInitialData() {
     this.isLoadingList.set(true);
-
-    forkJoin({
-      products: this._productClient.loadProducts(),
-      warehouses: this._warehouseClient.loadWarehouses(),
-      movements: this._movementsClient.loadMovements(),
-      inventories: this._inventoryClient.loadInventories(),
-    })
-      .pipe(takeUntil(this._destroy$))
-      .subscribe({
-        next: async ({ products, warehouses, movements, inventories }) => {
-          console.log(movements);
-
-          this.products.set([
-            { label: 'Seleccione un producto', value: null, disabled: true },
-            ...products.map((product) => ({ label: product.name, value: product.id })),
-          ]);
-          this.warehouses.set([
-            { label: 'Seleccione un almacén', value: null, disabled: true },
-            ...warehouses.map((warehouse) => ({ label: warehouse.name, value: warehouse.id })),
-          ]);
-          this.movements.set(movements);
-
-          try {
-            await this._indexedDB.clearAndBulkPut('products', products);
-            await this._indexedDB.clearAndBulkPut('warehouses', warehouses);
-            await this._indexedDB.clearAndBulkPut('inventories', inventories);
-            await this._indexedDB.clearAndBulkPut('movements', movements);
-            console.log('Movements view cache updated.');
-          } catch (error) {
-            console.error('Failed to update local cache:', error);
-          }
-
-          this.isLoadingList.set(false);
-        },
-        error: async (err) => {
-          console.log(err);
+    this.fetchDataFromSource(this.fetchFromNetwork())
+      .pipe(
+        // If network fails, try cache
+        catchError((err) => {
           console.warn('Could not load from network, trying cache.', err);
-
-          //TODO: ACCORDING TO THE ERROR
-
-          try {
-            // 1. Cargamos todo lo necesario para los selectores desde la caché
-            const cachedProducts = await this._indexedDB.getAll<any>('products');
-            const cachedWarehouses = await this._indexedDB.getAll<any>('warehouses');
-            const cachedMovements = await this._indexedDB.getAll<MovementResponse>('movements');
-
-            this.products.set([
-              { label: 'Seleccione un producto', value: null, disabled: true },
-              ...cachedProducts.map((product) => ({ label: product.name, value: product.id })),
-            ]);
-
-            this.warehouses.set([
-              { label: 'Seleccione un almacén', value: null, disabled: true },
-              ...cachedWarehouses.map((warehouse) => ({
-                label: warehouse.name,
-                value: warehouse.id,
-              })),
-            ]);
-
-            this.movements.set(cachedMovements);
-            console.log('Loaded form dropdowns from cache.');
-          } catch (cacheError) {
-            console.error('Failed to load from cache:', cacheError);
-          }
-
-          this.isLoadingList.set(false);
-        },
+          return this.fetchDataFromSource(this.fetchFromCache());
+        }),
+        takeUntil(this._destroy$)
+      )
+      .subscribe({
+        error: (err) => console.error('Failed to load initial data from any source:', err),
       });
   }
 
-  public onSubmit() {
+  /**
+   * Update UI and cache from data source
+   */
+  private fetchDataFromSource(source$: Observable<MovementViewData>): Observable<void> {
+    return source$.pipe(
+      tap((data) => this.updateUI(data)),
+      switchMap((data) => this.updateCache(data)),
+      map(() => void 0), // We don't care about updateCache's value
+      finalize(() => this.isLoadingList.set(false))
+    );
+  }
+
+  /**
+   * Create a new movement (online or offline fallback)
+   */
+  public createMovement(): void {
     if (this.inventoryForm.invalid) {
       this.inventoryForm.markAllAsTouched();
       return;
@@ -174,14 +152,6 @@ export class Movements implements OnDestroy, OnInit {
 
     this.isCreating.set(true);
 
-    this.saveOnline();
-    /*  if (this._onlineStatus.isOnline()) {
-    } else {
-      this.saveOffline();
-    } */
-  }
-
-  private saveOnline() {
     const formValue = this.inventoryForm.value;
 
     this._inventoryClient
@@ -194,57 +164,59 @@ export class Movements implements OnDestroy, OnInit {
         },
       })
       .pipe(
-        takeUntil(this._destroy$),
-        switchMap((inventories) => {
-          if (inventories.length === 0) return this.createInventoryOnline();
-
-          const currentInventory = inventories[0];
-          const currentQuantity = currentInventory.quantity;
-          const change = +formValue.quantity;
-          const newQuantity =
-            formValue.type === 'INBOUND' ? currentQuantity + change : currentQuantity - change;
-
-          if (newQuantity < 0) {
-            //TODO: ALERT
-            alert('Stock insuficiente para realizar la salida.');
-            this.isCreating.set(false);
-            return EMPTY;
-          }
-
-          return this.updateInventoryOnline(currentInventory.id, newQuantity);
-        }),
+        switchMap((inventories) => this.processInventory(inventories)),
         catchError((error) => {
           console.warn('Online save failed, falling back to offline mode.', error);
-          this.saveOffline();
-          return EMPTY;
-        })
+          alert('Offline. The movement will be saved locally.');
+          return this.createMovementOffline();
+        }),
+        finalize(() => this.isCreating.set(false)),
+        takeUntil(this._destroy$)
       )
       .subscribe({
         next: (movement) => {
           this.movements.update((current) => [movement, ...current]);
-          this.isCreating.set(false);
-          this.modalOpen.set(false);
+          this.finishCreation();
         },
         error: (err) => {
-          console.error('Error checking inventory existence:', err);
-          //TODO:ALERT
-          this.isCreating.set(false);
+          console.error('Critical error during save process:', err);
+          alert('Could not save the movement, not even locally.');
         },
       });
+  }
+
+  private processInventory(inventories: InventoryResponse[]): Observable<MovementResponse> {
+    const formValue = this.inventoryForm.value;
+    if (inventories.length > 0) {
+      const inventory = inventories[0];
+      const newQuantity =
+        formValue.type === 'INBOUND'
+          ? inventory.quantity + +formValue.quantity
+          : inventory.quantity - +formValue.quantity;
+      if (newQuantity < 0) {
+        alert('Insufficient stock for outbound movement.');
+        return EMPTY;
+      }
+      return this.updateInventoryOnline(inventory.id, newQuantity);
+    }
+    return this.createInventoryOnline();
   }
 
   private updateInventoryOnline(
     inventoryId: string,
     quantity: number
   ): Observable<MovementResponse> {
+    const formValue = this.inventoryForm.value;
+    const userId =
+      this._sessionManager.currentUser()?.['https://hasura.io/jwt/claims']['x-hasura-user-id'];
     return this._inventoryClient.updateInventory({ id: inventoryId }, { quantity }).pipe(
       switchMap(() =>
         this._movementsClient.createMovement({
           inventory_id: inventoryId,
-          quantity: +this.inventoryForm.value.quantity,
-          reason: this.inventoryForm.value.reason,
-          type: this.inventoryForm.value.type,
-          // user_id: null, //TODO: From JWT
+          quantity: +formValue.quantity,
+          reason: formValue.reason,
+          type: formValue.type,
+          user_id: userId,
         })
       )
     );
@@ -252,7 +224,8 @@ export class Movements implements OnDestroy, OnInit {
 
   private createInventoryOnline(): Observable<MovementResponse> {
     const formValue = this.inventoryForm.value;
-
+    const userId =
+      this._sessionManager.currentUser()?.['https://hasura.io/jwt/claims']['x-hasura-user-id'];
     return this._inventoryClient
       .createInventory({
         quantity: +formValue.quantity,
@@ -266,121 +239,168 @@ export class Movements implements OnDestroy, OnInit {
             quantity: +formValue.quantity,
             reason: formValue.reason,
             type: formValue.type,
-            // user_id: null , //TODO: From JWT
+            user_id: userId,
           })
         )
       );
   }
 
-  // -----------------------------------------------------------------------------------
-  // MÉTODO PARA GUARDAR OFFLINE
-  // -----------------------------------------------------------------------------------
+  /**
+   * Create a movement in offline mode (local cache)
+   */
+  private createMovementOffline(): Observable<Partial<MovementResponse>> {
+    return from(
+      (async () => {
+        const formValue = this.inventoryForm.value;
 
-  private async saveOffline() {
-    try {
-      const formValue = this.inventoryForm.value;
+        // Check if inventory for this product/warehouse exists in cache
+        const cachedInventory = await this._indexedDB.getFromIndex<InventoryResponse>(
+          'inventories',
+          'product_warehouse',
+          [formValue.product_id, formValue.warehouse_id]
+        );
 
-      const cachedInventory = await this._indexedDB.getFromIndex<any>(
-        'inventories', // La tabla de caché, no la de pendientes
-        'product_warehouse',
-        [formValue.product_id, formValue.warehouse_id]
-      );
+        // CASE 1: Inventory exists in cache, update it
+        if (cachedInventory) {
+          const change = +formValue.quantity;
+          const newQuantity =
+            formValue.type === 'INBOUND'
+              ? cachedInventory.quantity + change
+              : cachedInventory.quantity - change;
 
-      if (cachedInventory) {
-        const change = +formValue.quantity;
-        const newQuantity =
-          formValue.type === 'INBOUND'
-            ? cachedInventory.quantity + change
-            : cachedInventory.quantity - change;
+          // Validation: If not enough stock, throw error
+          if (newQuantity < 0)
+            throw new Error('Insufficient stock (according to last offline data).');
 
-        if (newQuantity < 0) {
-          alert('Stock insuficiente (según los últimos datos offline).');
-          this.isCreating.set(false);
-          return;
-        }
+          // Update inventory in cache
+          const updatedInventory = { ...cachedInventory, quantity: newQuantity };
+          await this._indexedDB.update('inventories', updatedInventory);
 
-        const updatedInventory = { ...cachedInventory, quantity: newQuantity };
-        await this._indexedDB.update('inventories', updatedInventory);
-
-        const pendingAction = {
-          id: uuidv4(), // ID único para esta acción
-          entity: 'movement',
-          action: 'CREATE_MOVEMENT',
-          payload: {
-            movement: {
-              id: uuidv4(), // El ID del propio movimiento
-              inventory_id: cachedInventory.id,
-              quantity: +formValue.quantity,
-              type: formValue.type,
-              reason: formValue.reason,
-              // user_id: 'user-id-from-jwt', // TODO
+          // Create pending action to update inventory and create movement
+          const pendingAction = {
+            id: uuidv4(),
+            entity: 'movement',
+            action: 'CREATE_MOVEMENT',
+            payload: {
+              movement: {
+                id: uuidv4(),
+                inventory_id: cachedInventory.id,
+                quantity: +formValue.quantity,
+                type: formValue.type,
+                reason: formValue.reason,
+              },
             },
-          },
-        };
+          };
+          await this._indexedDB.add('pending_actions', pendingAction);
+        }
+        // CASE 2: Inventory does not exist, create it (only if inbound)
+        else {
+          // Cannot do outbound for product with no inventory
+          if (formValue.type === 'OUTBOUND') {
+            throw new Error(
+              'Cannot register an outbound movement for a product with no offline inventory.'
+            );
+          }
 
-        await this._indexedDB.add('pending_actions', pendingAction);
-      } else {
-        if (formValue.type === 'OUTBOUND') {
-          alert(
-            'No se puede registrar una salida para un producto sin inventario registrado offline.'
-          );
-          this.isCreating.set(false);
-          return;
+          const newInventoryId = uuidv4();
+          const newLocalInventory = {
+            id: newInventoryId,
+            product_id: formValue.product_id,
+            warehouse_id: formValue.warehouse_id,
+            quantity: +formValue.quantity,
+          };
+
+          await this._indexedDB.add('inventories', newLocalInventory); // Add new inventory to cache
+
+          const pendingAction = {
+            id: uuidv4(),
+            entity: 'movement',
+            action: 'CREATE_INVENTORY_AND_MOVEMENT',
+            payload: {
+              inventory: newLocalInventory,
+              movement: {
+                id: uuidv4(),
+                inventory_id: newInventoryId,
+                quantity: +formValue.quantity,
+                type: formValue.type,
+                reason: formValue.reason,
+              },
+            },
+          };
+          await this._indexedDB.add('pending_actions', pendingAction);
         }
 
-        const newInventoryId = uuidv4();
-
-        const newLocalInventory = {
-          id: newInventoryId,
-          product_id: formValue.product_id,
-          warehouse_id: formValue.warehouse_id,
+        // Finally, create the optimistic movement to show in UI immediately
+        const optimisticMovement = {
+          id: uuidv4(),
           quantity: +formValue.quantity,
+          type: formValue.type,
+          reason: formValue.reason,
+          created_at: new Date().toISOString(),
+          user: { username: '(Pending)' }
         };
 
-        await this._indexedDB.add('inventories', newLocalInventory);
+        // Save it in its own cache table so it appears on reload
+        await this._indexedDB.add('movements', optimisticMovement);
 
-        const pendingAction = {
-          id: uuidv4(), // ID único para esta acción
-          entity: 'movement',
-          action: 'CREATE_INVENTORY_AND_MOVEMENT',
-          payload: {
-            inventory: newLocalInventory,
-            movement: {
-              id: uuidv4(), // El ID del propio movimiento
-              inventory_id: newInventoryId,
-              quantity: +formValue.quantity,
-              type: formValue.type,
-              reason: formValue.reason,
-              // user_id: 'user-id-from-jwt', // TODO
-            },
-          },
-        };
+        return optimisticMovement;
+      })()
+    );
+  }
 
-        await this._indexedDB.add('pending_actions', pendingAction);
-      }
+  private fetchFromNetwork(): Observable<MovementViewData> {
+    return forkJoin({
+      products: this._productClient.loadProducts(),
+      warehouses: this._warehouseClient.loadWarehouses(),
+      movements: this._movementsClient.loadMovements(),
+      inventories: this._inventoryClient.loadInventories(),
+    });
+  }
 
-      const optimisticMovement = {
-        id: uuidv4(),
-        quantity: +formValue.quantity,
-        type: formValue.type,
-        reason: formValue.reason,
-        created_at: new Date().toISOString(),
-        user: { username: 'Tú (Pendiente)' },
-      };
+  private fetchFromCache(): Observable<MovementViewData> {
+    return forkJoin({
+      products: from(this._indexedDB.getAll<ProductResponse>('products')),
+      warehouses: from(this._indexedDB.getAll<WarehouseResponse>('warehouses')),
+      movements: from(this._indexedDB.getAll<MovementResponse>('movements')),
+      inventories: from(this._indexedDB.getAll<InventoryResponse>('inventories')),
+    });
+  }
 
-      // Actualizamos la UI inmediatamente
-      await this._indexedDB.add('movements', optimisticMovement);
-      this.movements.update((current) => [optimisticMovement as MovementResponse, ...current]);
+  private updateUI(data: MovementViewData): void {
+    this.products.set(this.toSelectOptions(data.products, 'Select a product'));
+    this.warehouses.set(this.toSelectOptions(data.warehouses, 'Select a warehouse'));
+    this.movements.set(data.movements);
+  }
 
-      alert('Movimiento guardado offline. Se sincronizará al reconectar.');
-      this.isCreating.set(false);
-      this.modalOpen.set(false);
-      this.inventoryForm.reset();
-    } catch (error) {
-      console.error('Error al guardar offline:', error);
-      alert('Hubo un problema al guardar el movimiento localmente.');
-      this.isCreating.set(false);
-    }
+  private updateCache(data: MovementViewData): Observable<any> {
+    const operations = [
+      this._indexedDB.clearAndBulkPut('products', data.products),
+      this._indexedDB.clearAndBulkPut('warehouses', data.warehouses),
+      this._indexedDB.clearAndBulkPut('inventories', data.inventories),
+      this._indexedDB.clearAndBulkPut('movements', data.movements),
+    ];
+    return from(Promise.all(operations)).pipe(
+      tap(() => console.log('View cache updated.')),
+      catchError((err) => {
+        console.error('Failed to update cache:', err);
+        return of(null);
+      })
+    );
+  }
+
+  private toSelectOptions(
+    items: { id: string; name: string }[],
+    placeholder: string
+  ): VtSelectOption[] {
+    return [
+      { label: placeholder, value: null, disabled: true },
+      ...items.map((item) => ({ label: item.name, value: item.id })),
+    ];
+  }
+
+  private finishCreation(): void {
+    this.modalOpen.set(false);
+    this.inventoryForm.reset();
   }
 
   ngOnDestroy(): void {
@@ -388,3 +408,10 @@ export class Movements implements OnDestroy, OnInit {
     this._destroy$.complete();
   }
 }
+
+type MovementViewData = {
+  products: ProductResponse[];
+  warehouses: WarehouseResponse[];
+  movements: MovementResponse[];
+  inventories: InventoryResponse[];
+};
