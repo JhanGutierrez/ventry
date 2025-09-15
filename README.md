@@ -3,44 +3,43 @@
 
 ## 📡 Dónde está montado el GraphQL
 
-> [Coloca aquí la URL o endpoint donde tienes desplegado tu servidor GraphQL, por ejemplo: https://mi-servidor.com/graphql]
+> https://prepared-grouper-21.hasura.app/v1/graphql
 
 ---
 
 ## 🗄️ Tipo de base de datos utilizada
 
-> [Indica aquí el tipo de base de datos que usas, por ejemplo: PostgreSQL, MySQL, MongoDB, etc.]
+> PGSQL
 
 ---
 
-## 📊 Diagrama UML de la base de datos
+## 📊 Diagrama de la base de datos
 
-> [Incluye aquí una imagen o enlace al diagrama UML que usaste para modelar la base de datos. Puedes arrastrar la imagen o poner un link.]
+> <img width="792" height="819" alt="Screenshot 2025-09-15 111031" src="https://github.com/user-attachments/assets/24d424d0-333d-40f9-8035-ad951a065564" />
 
 ---
 
 ## 🌐 Despliegue en la web
 
-> [Explica aquí cómo y dónde desplegaste la aplicación web. Ejemplo: Vercel, Netlify, GitHub Pages, etc. Incluye pasos si es necesario.]
+> https://ventry.pages.dev/login
+> Usuarios de prueba: admin - 123456, johndoe - 123456
 
 ---
-## ⚙️ Variables de ambiente
+## ⚙️ Herramients en la nube
 
-Las variables de ambiente se gestionan en el archivo `.env` (o en los archivos de entorno de Angular como `environment.ts` y `environment.prod.ts`).
+Aws para la creación de cloud functions par autenticar usuarios:
+- ventry-user-register
+- ventry-login
 
-> [Agrega aquí ejemplos de las variables necesarias, por ejemplo: API_URL, GRAPHQL_ENDPOINT, etc.]
+Las variables de ambiente
 
----
-
-## 🗂️ Estructura de carpetas públicas y privadas
-
-En la estructura de Angular, puedes tener una carpeta pública para recursos estáticos y el resto del código en carpetas privadas.
-
-> [Describe aquí cómo organizas tu estructura de carpetas, por ejemplo: `public/` para assets públicos, `src/` para el código fuente privado.]
+> HASURA_ADMIN_SECRET
+> HASURA_GRAPHQL_ENDPOINT
+> JWT_SECRET
 
 ---
 
-Ventry es un sistema de gestión de inventario robusto, diseñado con un enfoque **offline-first**. Te permite gestionar productos, almacenes y movimientos de stock incluso cuando pierdes la conexión a internet. Todos los cambios se sincronizan automáticamente cuando se restablece la conectividad.
+Ventry es un sistema de gestión de inventario, diseñado con un enfoque **offline-first**. Te permite gestionar productos, almacenes y movimientos de stock incluso cuando pierdes la conexión a internet. Todos los cambios se sincronizan automáticamente cuando se restablece la conectividad.
 
 ---
 
@@ -83,66 +82,10 @@ Ventry está construido para funcionar perfectamente sin conexión. Para probar 
 
 Este proyecto demuestra:
 
-- **Arquitectura offline-first:** Todas las funciones principales (CRUD de productos, almacenes, movimientos) funcionan sin conexión a internet.
+- **Arquitectura offline-first:** Todas las funciones principales (CRUD de productos, almacenes, movimientos, inventario) funcionan sin conexión a internet.
 - **Sincronización automática:** Las acciones pendientes se encolan y sincronizan al recuperar la conectividad.
 - **Caché con IndexedDB:** Los datos se almacenan localmente para acceso rápido y confiable.
 - **Feedback al usuario:** La interfaz notifica sobre el estado offline y los eventos de sincronización.
-
----
-
-## Development server
-
-## Development server
-
-To start a local development server, run:
-
-```bash
-ng serve
-```
-
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
-
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
-
-```bash
-ng generate component component-name
-```
-
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
-
-```bash
-ng generate --help
-```
-
-## Building
-
-To build the project run:
-
-```bash
-ng build
-```
-
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
 
 ## Recursos adicionales
 
