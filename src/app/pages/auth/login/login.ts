@@ -2,6 +2,7 @@ import { Component, inject } from '@angular/core';
 import { FormBuilder, FormGroup, ReactiveFormsModule, Validators} from '@angular/forms';
 import { Router } from '@angular/router';
 import { LoginCredentials } from '@core/models/login-credentials';
+import { AuthClient } from '@core/services/auth-client';
 import { SessionManager } from '@core/services/session-manager';
 import { VtButton } from '@shared/components/ui/vt-button/vt-button';
 import { VtError } from '@shared/components/ui/vt-error/vt-error';
@@ -18,6 +19,7 @@ export class Login {
   private _fb = inject(FormBuilder)
   private _router = inject(Router);
   private _sessionManager = inject(SessionManager);
+  private _authClient = inject(AuthClient);
   public loginForm:FormGroup = new FormGroup({})
 
   constructor(){
@@ -45,8 +47,9 @@ export class Login {
 
     const credentials: LoginCredentials = this.loginForm.value;
 
-    this._sessionManager.login(credentials).subscribe({
+    this._authClient.login(credentials).subscribe({
       next:(token) => {
+        if (token) this._sessionManager.startSession(token);
         this._router.navigate(['/warehouses']);
         Swal.close();
         console.log('Login exitoso, token recibido:', token);

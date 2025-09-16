@@ -16,6 +16,8 @@ export class AuthClient {
         mutation: LOGIN_MUTATION,
         variables: credentials,
       })
-      .pipe(map((response) => response.data?.login.token));
+      .pipe(
+        map((response) => response.data?.login.token),
+    );
   }
 }

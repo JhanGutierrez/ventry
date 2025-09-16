@@ -5,7 +5,12 @@ import { ProductClient } from '@pages/admin/product/services/product-client';
 import { WarehouseClient } from '@pages/admin/warehouse/services/warehouse-client';
 import { IndexedDB } from './indexed-db';
 import { OnlineStatus } from './online-status';
-import { firstValueFrom } from 'rxjs';
+import { concat, concatMap, finalize, from, map, of, switchMap, toArray } from 'rxjs';
+import { InventoryResponse } from '@core/models/inventory-response';
+import { MovementResponse } from '@core/models/movement-response';
+import { ProductResponse } from '@core/models/product-response';
+import { WarehouseResponse } from '@core/models/warehouse-response';
+import Swal from 'sweetalert2';
 
 @Injectable({
   providedIn: 'root',
@@ -20,104 +25,225 @@ export class SyncData {
 
   private isSyncing = signal<boolean>(false);
   constructor() {
-    this.listenToConnectionChanges();
-  }
-
-  private listenToConnectionChanges(): void {
-    this._onlineStatus.online$.subscribe((isOnline) => {
-      if (isOnline) {
-        console.log('Connection restored. Starting sync...');
-        this.startSync();
-      }
+    this._onlineStatus.status$.subscribe((isOnline) => {
+      if (isOnline) this.startSync();
     });
   }
 
-  public async startSync(): Promise<void> {
+  public startSync(): void {
+    // Initial check to prevent multiple executions
     if (this.isSyncing()) {
-      console.log('Sync is already in progress.');
+      Swal.close();
+      console.log('La sincronización ya está en progreso.');
       return;
     }
 
     this.isSyncing.set(true);
 
-    try {
-      const pendingActions = await this._indexedDB.getAll<any>('pending_actions');
-      if (pendingActions.length === 0) {
-        console.log('No pending actions to sync.');
-        return;
-      }
+    Swal.fire({
+      title: 'Sincronizando Datos',
+      text: 'Por favor, espere mientras se sincronizan los datos...',
+      showConfirmButton: true,
+      didOpen: () => Swal.showLoading(),
+    });
 
-      console.log(`Starting sync of ${pendingActions.length} pending actions.`);
-
-      for (const action of pendingActions) await this.processAction(action);
-
-      console.log('Sync process completed successfully!');
-      alert('¡Sincronización completada! Tus datos están actualizados.');
-      window.location.reload();
-    } catch (error) {
-      console.error('Sync process failed and was stopped. Will retry later.', error);
-      alert('Algunos datos no se pudieron sincronizar. Se reintentará más tarde.');
-    } finally {
-      this.isSyncing.set(false);
-    }
+    of(null)
+      .pipe(
+        concatMap(() => this.insertNewProducts()),
+        concatMap(() => this.insertNewWarehouses()),
+        concatMap(() => this.updateInventories()),
+        concatMap(() => this.insertNewInventories()),
+        concatMap(() => this.insertNewMovements()),
+        finalize(() => this.isSyncing.set(false))
+      )
+      .subscribe({
+        next: () => {
+          Swal.fire({
+            icon: 'success',
+            title: 'Sincronización Completa',
+            text: 'Todos los datos pendientes han sido sincronizados con el servidor.',
+          });
+          console.log('Sincronización completa');
+        },
+        error: (err) => {
+          Swal.fire({
+            icon: 'error',
+            title: 'Error al sincronizar',
+            text: 'Se produjo un problema al sincronizar los datos. Si estás sin conexión, puedes ignorar este mensaje. Si tienes conexión, por favor intenta nuevamente más tarde.',
+          });
+          console.error('La sincronización se detuvo debido a un error en uno de los pasos:', err);
+        },
+      });
   }
 
-  private async processAction(action: any): Promise<void> {
-    console.log(`Processing action: ${action.entity} - ${action.action}`);
+  private updateInventories() {
+    return from(
+      this._indexedDB.getAllFromIndex<Partial<InventoryResponse & { sync_status: string }>>(
+        'inventories',
+        'by_sync_status',
+        'PENDING_UPDATE'
+      )
+    ).pipe(
+      switchMap((pendingInventories) => {
+        if (!pendingInventories || pendingInventories.length === 0) {
+          console.log('No hay inventarios pendientes de actualización.');
+          return of([]);
+        }
 
-    switch (action.entity) {
-      case 'warehouse':
-        await this.handleWarehouseAction(action);
-        break;
-      case 'product':
-        await this.handleProductAction(action);
-        break;
-      case 'movement':
-        await this.handleMovementAction(action);
-        break;
-      default:
-        console.error(`Unknown entity type: ${action.entity}`);
-        break;
-    }
+        const updateObservables$ = pendingInventories.map((inventory) => {
+          const { id, quantity } = inventory;
+          return this._inventoryClient.updateInventory({ id: id! }, { quantity }).pipe(
+            switchMap(() => {
+              const syncedInventory = { ...inventory, sync_status: 'SYNCED' };
+              return from(this._indexedDB.update('inventories', syncedInventory));
+            }),
+            map(() => inventory.id)
+          );
+        });
 
-    await this._indexedDB.delete('pending_actions', action.id);
-    console.log(`Action ${action.id} processed and removed from queue.`);
+        return concat(...updateObservables$).pipe(toArray());
+      })
+    );
   }
 
-  private async handleWarehouseAction(action: any): Promise<void> {
-    if (action.action === 'CREATE') {
-      await firstValueFrom(this._warehouseClient.createWarehouse(action.payload.warehouse));
-    }
+  private insertNewInventories() {
+    return from(
+      this._indexedDB.getAllFromIndex<InventoryResponse & { sync_status: string }>(
+        'inventories',
+        'by_sync_status',
+        'PENDING_CREATION'
+      )
+    ).pipe(
+      switchMap((pendingInventories) => {
+        if (!pendingInventories || pendingInventories.length === 0) {
+          console.log('No hay inventarios pendientes de creación.');
+          return of([]);
+        }
+
+        const updateObservables$ = pendingInventories.map((inventory) => {
+          const { sync_status, product, warehouse, ...payload } = inventory;
+
+          return this._inventoryClient.createInventory(payload).pipe(
+            switchMap((serverResponse) => {
+              const syncedInventory = {
+                ...inventory,
+                ...serverResponse,
+                sync_status: 'SYNCED',
+              };
+
+              return from(this._indexedDB.update('inventories', syncedInventory));
+            }),
+            map(() => inventory.id)
+          );
+        });
+
+        return concat(...updateObservables$).pipe(toArray());
+      })
+    );
   }
 
-  private async handleProductAction(action: any): Promise<void> {
-    if (action.action === 'CREATE') {
-      await firstValueFrom(this._productClient.createProduct(action.payload.product));
-    }
+  private insertNewMovements() {
+    return from(
+      this._indexedDB.getAllFromIndex<MovementResponse & { sync_status: string }>(
+        'movements',
+        'by_sync_status',
+        'PENDING_CREATION'
+      )
+    ).pipe(
+      switchMap((pendingMovements) => {
+        if (!pendingMovements || pendingMovements.length === 0) {
+          console.log('No hay movimientos pendientes de creación.');
+          return of([]);
+        }
+
+        const updateObservables$ = pendingMovements.map((movement) => {
+          const { user, sync_status, ...payload } = movement;
+          return this._movementsClient.createMovement(payload).pipe(
+            switchMap((serverResponse) => {
+              const syncedMovement = {
+                ...movement,
+                ...serverResponse,
+                sync_status: 'SYNCED',
+              };
+
+              return from(this._indexedDB.update('movements', syncedMovement));
+            }),
+            map(() => movement.id)
+          );
+        });
+
+        return concat(...updateObservables$).pipe(toArray());
+      })
+    );
   }
 
-  private async handleMovementAction(action: any): Promise<void> {
-    switch (action.action) {
-      case 'CREATE_INVENTORY_AND_MOVEMENT':
-        const newInventory = await firstValueFrom(
-          this._inventoryClient.createInventory(action.payload.inventory)
-        );
+  private insertNewProducts() {
+    return from(
+      this._indexedDB.getAllFromIndex<ProductResponse & { sync_status: string }>(
+        'products',
+        'by_sync_status',
+        'PENDING_CREATION'
+      )
+    ).pipe(
+      switchMap((pendingProducts) => {
+        if (!pendingProducts || pendingProducts.length === 0) {
+          console.log('No hay productos pendientes de creación.');
+          return of([]);
+        }
 
-        await firstValueFrom(
-          this._movementsClient.createMovement({
-            ...action.payload.movement,
-            inventory_id: newInventory.id,
-          })
-        );
-        break;
+        const updateObservables$ = pendingProducts.map((product) => {
+          const { sync_status, ...payload } = product;
+          return this._productClient.createProduct(payload).pipe(
+            switchMap((serverResponse) => {
+              const syncedProduct = {
+                ...product,
+                ...serverResponse,
+                sync_status: 'SYNCED',
+              };
 
-      case 'CREATE_MOVEMENT':
-        await firstValueFrom(this._movementsClient.createMovement(action.payload.movement));
-        break;
+              return from(this._indexedDB.update('products', syncedProduct));
+            }),
+            map(() => product.id)
+          );
+        });
 
-      default:
-        console.error(`Unknown movement action: ${action.action}`);
-        break;
-    }
+        return concat(...updateObservables$).pipe(toArray());
+      })
+    );
+  }
+
+  private insertNewWarehouses() {
+    return from(
+      this._indexedDB.getAllFromIndex<WarehouseResponse & { sync_status: string }>(
+        'warehouses',
+        'by_sync_status',
+        'PENDING_CREATION'
+      )
+    ).pipe(
+      switchMap((pendingWarehouses) => {
+        if (!pendingWarehouses || pendingWarehouses.length === 0) {
+          console.log('No hay almacenes pendientes de creación.');
+          return of([]);
+        }
+
+        const updateObservables$ = pendingWarehouses.map((warehouse) => {
+          const { sync_status, ...payload } = warehouse;
+          return this._warehouseClient.createWarehouse(payload).pipe(
+            switchMap((serverResponse) => {
+              const syncedWarehouse = {
+                ...warehouse,
+                ...serverResponse,
+                sync_status: 'SYNCED',
+              };
+
+              return from(this._indexedDB.update('warehouses', syncedWarehouse));
+            }),
+            map(() => warehouse.id)
+          );
+        });
+
+        return concat(...updateObservables$).pipe(toArray());
+      })
+    );
   }
 }

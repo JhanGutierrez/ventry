@@ -8,12 +8,24 @@ import { VtError } from '@shared/components/ui/vt-error/vt-error';
 import { VtTextInput } from '@shared/components/ui/vt-text-input/vt-text-input';
 import { VtSpinner } from '@shared/components/ui/vt-spinner/vt-spinner';
 import { ProductClient } from './services/product-client';
-import { EMPTY, of, from, Subject, takeUntil, tap, catchError, finalize, Observable, map } from 'rxjs';
+import {
+  EMPTY,
+  of,
+  from,
+  Subject,
+  takeUntil,
+  tap,
+  catchError,
+  finalize,
+  Observable,
+  map,
+} from 'rxjs';
 import { ProductResponse } from '@core/models/product-response';
 import { IndexedDB } from '@core/services/indexed-db';
 import { DatePipe } from '@angular/common';
 import { v4 as uuidv4 } from 'uuid';
 import { AppPermission } from '@core/directives/app-permission';
+import { OnlineStatus } from '@core/services/online-status';
 
 @Component({
   selector: 'app-product',
@@ -34,6 +46,7 @@ import { AppPermission } from '@core/directives/app-permission';
 })
 export class Product implements OnDestroy, OnInit {
   public readonly addIcon = signal<LucideIconData>(Plus);
+  private _onlineStatus = inject(OnlineStatus);
   private _productClient = inject(ProductClient);
   private _fb = inject(FormBuilder);
   private _indexedDB = inject(IndexedDB);
@@ -67,34 +80,42 @@ export class Product implements OnDestroy, OnInit {
     this.getProducts();
   }
 
-  /**
-   * Loads products from API or cache
-   */
   public getProducts(): void {
     this.isLoadingList.set(true);
-    this._productClient
-      .loadProducts()
+    this.fetchDataAndCache()
       .pipe(
-        // On success, update cache
-        tap((productsFromServer) => this.updateCache(productsFromServer)),
-        // On error, try to load from cache
-        catchError((err) => {
-          console.warn('Could not load products from network, trying cache.', err);
-          return this.loadFromCache();
-        }),
         finalize(() => this.isLoadingList.set(false)),
         takeUntil(this._destroy$)
       )
       .subscribe({
         next: (products) => this.products.set(products),
-        error: (err) => console.error('Failed to load products from network or cache:', err),
+        error: (err) => {
+          console.error('Error irrecuperable al cargar productos:', err);
+          this.products.set([]); // Limpia la lista en caso de un error fatal
+        },
       });
   }
 
-  /**
-   * Creates a product, tries offline if online fails
-   * @returns void
-   */
+  private fetchDataAndCache(): Observable<ProductResponse[]> {
+    if (this._onlineStatus.isOnline()) {
+      return this._productClient.loadProducts().pipe(
+        tap((productsFromServer) => {
+          this._indexedDB
+            .clearAndBulkPut('products', productsFromServer)
+            .then(() => console.log('Cache de productos actualizada.'))
+            .catch((err) => console.error('Fallo al cachear productos:', err));
+        }),
+        catchError((error) => {
+          console.warn('API falló estando online. Usando caché como fallback.', error);
+          return from(this._indexedDB.getAll<ProductResponse>('products'));
+        })
+      );
+    } else {
+      console.log('Offline. Obteniendo productos directamente de la caché.');
+      return from(this._indexedDB.getAll<ProductResponse>('products'));
+    }
+  }
+
   public createProduct(): void {
     if (this.productForm.invalid) {
       this.productForm.markAllAsTouched();
@@ -103,89 +124,50 @@ export class Product implements OnDestroy, OnInit {
 
     this.isCreating.set(true);
 
-    this._productClient
-      .createProduct(this.productForm.value)
+    const creation$ = this._onlineStatus.isOnline()
+      ? this.createProductOnline()
+      : this.createProductOffline();
+
+    creation$
       .pipe(
-        // If online creation fails, try offline
-        catchError((error) => {
-          console.error('Online creation failed, attempting offline save.', error);
-          alert('No connection. Product will be saved and created when reconnected.');
-          return this.createProductOffline();
-        }),
-        // Always stop spinner at the end
         finalize(() => this.isCreating.set(false)),
         takeUntil(this._destroy$)
       )
       .subscribe({
         next: (newProduct) => {
-          // Both online and offline emit the new product
-          this.products.update((current) => [...current, newProduct]);
+          this.products.update((current) => [newProduct, ...current]);
           this.finishCreation();
         },
         error: (err) => {
-          // This error is only emitted if OFFLINE creation fails
-          console.error('Failed to save product offline:', err);
-          alert('Could not save product locally.');
+          console.error('La creación falló críticamente (ni online ni offline):', err);
+          alert('No se pudo guardar el producto. Inténtalo de nuevo.');
         },
       });
   }
 
-  /**
-   * Updates local cache with new data
-   * @param data New product data to cache
-   */
-  private updateCache(data: ProductResponse[]): void {
-    from(this._indexedDB.clearAndBulkPut('products', data))
-      .pipe(catchError(() => of(console.error('Failed to update product cache.'))))
-      .subscribe(() => console.log('Product cache updated.'));
-  }
-
-  /**
-   * Loads products from local cache
-   * @returns An observable of cached product data
-   */
-  private loadFromCache(): Observable<ProductResponse[]> {
-    return from(this._indexedDB.getAll<ProductResponse>('products')).pipe(
-      catchError((cacheError) => {
-        console.error('Failed to load products from cache:', cacheError);
-        // Return empty array to keep flow working
-        return of([]);
+  private createProductOnline(): Observable<ProductResponse> {
+    return this._productClient.createProduct(this.productForm.value).pipe(
+      tap((serverProduct) => {
+        this._indexedDB.add('products', { ...serverProduct, sync_status: 'SYNCED' });
+      }),
+      catchError((error) => {
+        console.warn('Creación online falló. Intentando guardado offline como fallback.', error);
+        alert('Conexión perdida. El producto se guardará y sincronizará más tarde.');
+        return this.createProductOffline();
       })
     );
   }
 
-  /**
-   * Saves product offline if online fails
-   * @returns Observable emitting the optimistically created product
-   */
   private createProductOffline(): Observable<ProductResponse> {
-    const productData = this.productForm.value;
-    const newProductId = uuidv4();
-
     const optimisticProduct: ProductResponse = {
-      ...productData,
-      id: newProductId,
-      created_at: new Date().toISOString(),
-    };
-
-    const pendingAction = {
+      ...this.productForm.value,
       id: uuidv4(),
-      entity: 'product',
-      action: 'CREATE',
-      payload: { product: optimisticProduct },
+      created_at: new Date().toISOString(),
+      sync_status: 'PENDING_CREATION',
     };
 
-    // Convert IndexedDB promises to observable
-    const offlineSave$ = from(
-      Promise.all([
-        this._indexedDB.add('pending_actions', pendingAction),
-        this._indexedDB.add('products', optimisticProduct),
-      ])
-    );
-    return offlineSave$.pipe(
-      // If all goes well, emit the optimistic product
-      map(() => optimisticProduct)
-    );
+    const offlineSave$ = from(this._indexedDB.add('products', optimisticProduct));
+    return offlineSave$.pipe(map(() => optimisticProduct));
   }
 
   // Resets modal and form after creation

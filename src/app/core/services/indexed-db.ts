@@ -18,7 +18,10 @@ export class IndexedDB {
         for (const storeConfig of STORES) {
           if (!db.objectStoreNames.contains(storeConfig.name)) {
             const store = db.createObjectStore(storeConfig.name, storeConfig.options);
+
+            // Iterate over the indexes defined in the configuration
             storeConfig.indexes?.forEach((index) => {
+              // Create each index in the newly created 'store'
               store.createIndex(index.name, index.keyPath, index.options);
             });
           }
@@ -42,6 +45,11 @@ export class IndexedDB {
     return db.getFromIndex(storeName, indexName, query) as T;
   }
 
+  async getAllFromIndex<T>(storeName: string, indexName: string, query: IDBValidKey): Promise<T[]> {
+    const db = await this._dbPromise;
+    return db.getAllFromIndex(storeName, indexName, query) as Promise<T[]>;
+  }
+
   async getByKey<T>(storeName: string, key: string) {
     const db = await this._dbPromise;
     return db.get(storeName, key) as T;
@@ -55,6 +63,13 @@ export class IndexedDB {
   async delete(storeName: string, key: string) {
     const db = await this._dbPromise;
     return db.delete(storeName, key);
+  }
+
+  async clear(storeName: string): Promise<void> {
+    const db = await this._dbPromise;
+    const tx = db.transaction(storeName, 'readwrite');
+    await tx.store.clear();
+    await tx.done;
   }
 
   async clearAndBulkPut<T>(storeName: string, values: T[]): Promise<void> {
