@@ -10,6 +10,7 @@
   box-sizing: border-box;
   padding: 0;
   margin: 0;
+  font-family: 'Inter', sans-serif;
 }
 
 :root {
@@ -42,8 +43,4 @@
   --color-sidebar-accent-foreground: hsl(0 0% 21%);
   --color-sidebar-border: hsl(0 0% 92%);
   --color-sidebar-ring: hsl(0 0% 71%); */
-}
-
-body {
-  font-family: 'Inter', sans-serif;
 }

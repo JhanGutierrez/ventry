@@ -10,22 +10,14 @@ import { jwtDecode } from 'jwt-decode';
   providedIn: 'root',
 })
 export class SessionManager {
-  private _authClient = inject(AuthClient);
-  private _router = inject(Router);
 
   private _isAuthenticated = signal<boolean>(this.isTokenValid());
   public isAuthenticated = this._isAuthenticated.asReadonly();
 
   private _currentUser = signal<UserPayload | null>(this.getUserData());
   public currentUser = this._currentUser.asReadonly();
+  private _router = inject(Router);
 
-  public login(credentials: LoginCredentials): Observable<string | undefined> {
-    return this._authClient.login(credentials).pipe(
-      tap((token) => {
-        if (token) this.startSession(token);
-      })
-    );
-  }
 
   public logout(): void {
     localStorage.removeItem('authToken');
@@ -34,15 +26,8 @@ export class SessionManager {
     this._router.navigate(['/login']);
   }
 
-  private startSession(token: string): void {
-    localStorage.setItem('authToken', token);
-    const userData = this.getUserData();
-    this._isAuthenticated.set(true);
-    this._currentUser.set(userData);
-  }
-
   private getUserData(): UserPayload | null {
-    const token = this.getToken();
+    const token = localStorage.getItem('authToken');
     if (!token) return null;
 
     try {
@@ -56,7 +41,7 @@ export class SessionManager {
   }
 
   public isTokenValid(): boolean {
-    const token = this.getToken();
+    const token = localStorage.getItem('authToken');
     if (!token) return false;
 
     try {
@@ -64,17 +49,36 @@ export class SessionManager {
       const expirationDate = decodedToken.exp * 1000; //Conver to milliseconds
       const isExpired = Date.now() > expirationDate;
 
-      if (isExpired)
-        return false;
-
-      return true;
+      return !isExpired;
     } catch (error) {
-      console.error('Invalid token:', error);
       return false;
     }
   }
 
   public getToken(): string | null {
-    return localStorage.getItem('authToken');
+    if (this.isTokenValid()) {
+      return localStorage.getItem('authToken');
+    }
+    return null;
+  }
+
+  public startSession(token: string): void {
+    localStorage.setItem('authToken', token);
+    this.loadSessionFromStorage();
+  }
+
+  private loadSessionFromStorage(): void {
+    const token = localStorage.getItem('authToken');
+    if (token && this.isTokenValid()) {
+      try {
+        const userData = jwtDecode<UserPayload>(token);
+        this._isAuthenticated.set(true);
+        this._currentUser.set(userData);
+      } catch (error) {
+        this.logout();
+      }
+    } else {
+      this.logout();
+    }
   }
 }

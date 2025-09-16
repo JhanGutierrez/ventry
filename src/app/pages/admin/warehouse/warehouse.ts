@@ -8,12 +8,13 @@ import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { VtError } from '@shared/components/ui/vt-error/vt-error';
 import { VtTextInput } from '@shared/components/ui/vt-text-input/vt-text-input';
 import { VtSpinner } from '@shared/components/ui/vt-spinner/vt-spinner';
-import { of, from, Subject, takeUntil, tap, catchError, finalize, Observable, map } from 'rxjs';
+import { from, Subject, takeUntil, tap, catchError, finalize, Observable, map } from 'rxjs';
 import { WarehouseResponse } from '@core/models/warehouse-response';
 import { IndexedDB } from '@core/services/indexed-db';
 import { DatePipe } from '@angular/common';
 import { v4 as uuidv4 } from 'uuid';
 import { AppPermission } from '@core/directives/app-permission';
+import { OnlineStatus } from '@core/services/online-status';
 
 @Component({
   selector: 'app-warehouse',
@@ -37,6 +38,7 @@ export class Warehouse implements OnDestroy, OnInit {
   private _fb = inject(FormBuilder);
   private _indexedDB = inject(IndexedDB);
   private _datePipe = inject(DatePipe);
+  private _onlineStatus = inject(OnlineStatus);
 
   public readonly addIcon = signal<LucideIconData>(Plus);
   public warehouses = signal<WarehouseResponse[]>([]);
@@ -61,37 +63,45 @@ export class Warehouse implements OnDestroy, OnInit {
       name: [null, Validators.required],
       location: [null, Validators.required],
     });
-    this.getWarehouses();
+    this.loadWarehouses();
   }
 
-  /**
-   * Loads warehouses from API or cache
-   */
-  private getWarehouses(): void {
+  public loadWarehouses(): void {
     this.isLoadingList.set(true);
-    this._warehouseClient
-      .loadWarehouses()
+    this.fetchDataAndCache()
       .pipe(
-        // On success, update cache
-        tap((warehousesFromServer) => this.updateCache(warehousesFromServer)),
-        // On error, try to load from cache
-        catchError((err) => {
-          console.warn('Could not load warehouses from network, trying cache.', err);
-          return this.loadFromCache();
-        }),
         finalize(() => this.isLoadingList.set(false)),
         takeUntil(this._destroy$)
       )
       .subscribe({
         next: (warehouses) => this.warehouses.set(warehouses),
-        error: (err) => console.error('Failed to load warehouses from network or cache:', err),
+        error: (err) => {
+          console.error('Error irrecuperable al cargar almacenes:', err);
+          this.warehouses.set([]);
+        },
       });
   }
 
-  /**
-   * Creates a warehouse, tries offline if online fails
-   * @returns void
-   */
+  private fetchDataAndCache(): Observable<WarehouseResponse[]> {
+    if (this._onlineStatus.isOnline()) {
+      return this._warehouseClient.loadWarehouses().pipe(
+        tap((warehousesFromServer) => {
+          this._indexedDB
+            .clearAndBulkPut('warehouses', warehousesFromServer)
+            .then(() => console.log('Cache de almacenes actualizada.'))
+            .catch((err) => console.error('Fallo al cachear almacenes:', err));
+        }),
+        catchError((error) => {
+          console.warn('API falló estando online. Usando caché como fallback.', error);
+          return from(this._indexedDB.getAll<WarehouseResponse>('warehouses'));
+        })
+      );
+    } else {
+      console.log('Offline. Obteniendo almacenes directamente de la caché.');
+      return from(this._indexedDB.getAll<WarehouseResponse>('warehouses'));
+    }
+  }
+
   public createWarehouse(): void {
     if (this.warehouseForm.invalid) {
       this.warehouseForm.markAllAsTouched();
@@ -99,90 +109,50 @@ export class Warehouse implements OnDestroy, OnInit {
     }
     this.isCreating.set(true);
 
-    this._warehouseClient
-      .createWarehouse(this.warehouseForm.value)
+    const creation$ = this._onlineStatus.isOnline()
+      ? this.createWarehouseOnline()
+      : this.createWarehouseOffline();
+
+    creation$
       .pipe(
-        // If online creation fails, try offline
-        catchError((error) => {
-          console.error('Online creation failed, attempting offline save.', error);
-          alert('No connection. Warehouse will be saved and created when reconnected.');
-          return this.createWarehouseOffline();
-        }),
-        // Always stop spinner at the end
         finalize(() => this.isCreating.set(false)),
         takeUntil(this._destroy$)
       )
       .subscribe({
         next: (newWarehouse) => {
-          // Both online and offline emit the new warehouse
-          this.warehouses.update((current) => [...current, newWarehouse]);
+          this.warehouses.update((current) => [newWarehouse, ...current]);
           this.finishCreation();
         },
         error: (err) => {
-          // This error is only emitted if OFFLINE creation fails
-          console.error('Failed to save warehouse offline:', err);
-          alert('Could not save warehouse locally.');
+          console.error('La creación del almacén falló críticamente:', err);
+          alert('No se pudo guardar el almacén. Inténtalo de nuevo.');
         },
       });
   }
 
-  /**
-   * Updates local cache with new data
-   * @param data New warehouse data to cache
-   */
-  private updateCache(data: WarehouseResponse[]): void {
-    from(this._indexedDB.clearAndBulkPut('warehouses', data))
-      .pipe(catchError(() => of(console.error('Failed to update warehouse cache.'))))
-      .subscribe(() => console.log('Warehouse cache updated.'));
-  }
-
-  /**
-   * Loads warehouses from local cache
-   * @returns An observable of cached warehouse data
-   */
-  private loadFromCache(): Observable<WarehouseResponse[]> {
-    return from(this._indexedDB.getAll<WarehouseResponse>('warehouses')).pipe(
-      catchError((cacheError) => {
-        console.error('Failed to load warehouses from cache:', cacheError);
-        // Return empty array to keep flow working
-        return of([]);
+  private createWarehouseOnline(): Observable<WarehouseResponse> {
+    return this._warehouseClient.createWarehouse(this.warehouseForm.value).pipe(
+      tap((serverWarehouse) => {
+        this._indexedDB.add('warehouses', { ...serverWarehouse, sync_status: 'SYNCED' });
+      }),
+      catchError((error) => {
+        console.warn('Creación online falló. Intentando guardado offline como fallback.', error);
+        alert('Conexión perdida. El almacén se guardará y sincronizará más tarde.');
+        return this.createWarehouseOffline();
       })
     );
   }
 
-  /**
-   * Saves warehouse offline if online fails
-   * @returns An observable of the newly created warehouse
-   */
   private createWarehouseOffline(): Observable<WarehouseResponse> {
-    const warehouseData = this.warehouseForm.value;
-    const newWarehouseId = uuidv4();
-
     const optimisticWarehouse: WarehouseResponse = {
-      ...warehouseData,
-      id: newWarehouseId,
-      created_at: new Date().toISOString(),
-    };
-
-    const pendingAction = {
+      ...this.warehouseForm.value,
       id: uuidv4(),
-      entity: 'warehouse',
-      action: 'CREATE',
-      payload: { warehouse: optimisticWarehouse },
+      created_at: new Date().toISOString(),
+      sync_status: 'PENDING_CREATION',
     };
 
-    // Convert IndexedDB promises to observable
-    const offlineSave$ = from(
-      Promise.all([
-        this._indexedDB.add('pending_actions', pendingAction),
-        this._indexedDB.add('warehouses', optimisticWarehouse),
-      ])
-    );
-
-    return offlineSave$.pipe(
-      // If all goes well, emit the optimistic warehouse
-      map(() => optimisticWarehouse)
-    );
+    const offlineSave$ = from(this._indexedDB.add('warehouses', optimisticWarehouse));
+    return offlineSave$.pipe(map(() => optimisticWarehouse));
   }
 
   // Resets modal and form after creation

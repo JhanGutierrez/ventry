@@ -1,20 +1,24 @@
 import { Injectable } from '@angular/core';
-import { fromEvent, map, merge, Observable, of } from 'rxjs';
+import { BehaviorSubject, fromEvent, map, merge, Observable, of } from 'rxjs';
 
 @Injectable({
   providedIn: 'root',
 })
 export class OnlineStatus {
-  public online$: Observable<boolean>;
+  private onlineStatus$ = new BehaviorSubject<boolean>(navigator.onLine);
 
   constructor() {
-    this.online$ = merge(
-      of(navigator.onLine),
-      fromEvent(window, 'online').pipe(map(() => true)),
-      fromEvent(window, 'offline').pipe(map(() => false))
-    );
+    const goOnline$ = fromEvent(window, 'online').pipe(map(() => true));
+    const goOffline$ = fromEvent(window, 'offline').pipe(map(() => false));
+
+    merge(goOnline$, goOffline$).subscribe((isOnline) => this.onlineStatus$.next(isOnline));
   }
-  isOnline(): boolean {
-    return navigator.onLine;
+
+  public get status$(): Observable<boolean> {
+    return this.onlineStatus$.asObservable();
+  }
+
+  public isOnline(): boolean {
+    return this.onlineStatus$.getValue();
   }
 }
